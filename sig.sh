@@ -59,4 +59,3 @@ cmd="curl -s -S -X GET -G -H \"X-NCMB-Application-Key: ${APPLICATION_KEY}\" \\
  https://mbaas.api.nifcloud.com${REQ_PATH}"
 res=`sh -c "${cmd}"`
 echo $res
-
