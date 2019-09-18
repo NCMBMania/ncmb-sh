@@ -25,14 +25,24 @@ do
         '-s' )
             SKIP=$2
             ;;
+        '-d' )
+            DATA=$2
+            ;;
+        '-i' )
+            ID=$2
+            ;;
     esac
     shift
 done
+
 
 DATE=`date '+%Y-%m-%dT%H:%M:%S%z'`
 FQDN="mbaas.api.nifcloud.com"
 str="SignatureMethod=HmacSHA256&SignatureVersion=2&X-NCMB-Application-Key=$APPLICATION_KEY&X-NCMB-Timestamp=$DATE"
 QUERY=""
+if [ ! $ID = "" ]; then
+  REQ_PATH="${REQ_PATH}/$ID"
+fi
 if [ ! $LIMIT = "" ]; then
   str="$str&limit=$LIMIT"
   QUERY=" --data-urlencode 'limit=$LIMIT'"
@@ -46,16 +56,27 @@ if [ ! $WHERE = "" ]; then
   str="$str&where=$tmp"
   QUERY="$QUERY --data-urlencode 'where=$WHERE'"
 fi
-
-sigStr=$METHOD"\n"$FQDN"\n"$REQ_PATH"\n"$str
-
+sigStr=${METHOD^^}"\n"$FQDN"\n"$REQ_PATH"\n"$str
 sig=`echo -e -n ${sigStr} | openssl dgst -sha256 -binary -hmac ${CLIENT_KEY} | base64`
 
-cmd="curl -s -S -X GET -G -H \"X-NCMB-Application-Key: ${APPLICATION_KEY}\" \\
+cmd="curl -s -S -X ${METHOD^^} -H \"X-NCMB-Application-Key: ${APPLICATION_KEY}\" \\
  -H \"X-NCMB-Timestamp: ${DATE}\" \\
  -H \"X-NCMB-Signature: ${sig}\" \\
- -H \"Content-Type: application/json\" \\
- ${QUERY} \\
- https://mbaas.api.nifcloud.com${REQ_PATH}"
+ -H \"Content-Type: application/json\""
+
+if [ ${METHOD^^} = "GET" ]; then
+  cmd="${cmd} -G ${QUERY}"
+elif [ ${METHOD^^} = "POST" ]; then
+  DATA="-d '$DATA'"
+  cmd="${cmd} $DATA"
+elif [ ${METHOD^^} = "PUT" ]; then
+  DATA="-d '$DATA'"
+  cmd="${cmd} $DATA"
+elif [ ${METHOD^^} = "DELETE" ]; then
+  :
+fi
+
+cmd="${cmd} https://mbaas.api.nifcloud.com${REQ_PATH}"
+
 res=`sh -c "${cmd}"`
 echo $res
