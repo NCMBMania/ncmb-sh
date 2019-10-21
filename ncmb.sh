@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+if [[ -f ./.env ]]; then
+  . .env
+fi
+
 for OPT in "$@"
 do
     case $OPT in
@@ -10,7 +14,7 @@ do
             CLIENT_KEY=$2
             ;;
         '-w' )
-            WHERE=${2}
+            WHERE=$2
             ;;
         '-p' )
             CLASSNAME=$2
@@ -31,17 +35,44 @@ do
         '-i' )
             ID=$2
             ;;
+        '--auth' )
+            AUTH=1
+            ;;
+        '--session' )
+            SESSION=$2
+            ;;
+        '-f' )
+            FILE=$2
+            ;;
+        '--sign' )
+            SIGN=1
+            ;;
     esac
     shift
 done
 
-
+QUERY=""
+if [ ! $AUTH = "" ]; then
+  ID=""
+  REQ_PATH="/2013-09-01/login"
+  METHOD="GET"
+  read -p "USER NAME:" USERNAME
+  read -sp "PASSWORD:" PASSWORD
+  echo ""
+fi
 DATE=`date '+%Y-%m-%dT%H:%M:%S%z'`
 FQDN="mbaas.api.nifcloud.com"
 str="SignatureMethod=HmacSHA256&SignatureVersion=2&X-NCMB-Application-Key=$APPLICATION_KEY&X-NCMB-Timestamp=$DATE"
-QUERY=""
 if [ ! $ID = "" ]; then
   REQ_PATH="${REQ_PATH}/$ID"
+fi
+if [ ! $AUTH = "" ]; then
+  str="$str&password=$PASSWORD&userName=$USERNAME"
+  QUERY=" --data-urlencode 'userName=$USERNAME' --data-urlencode 'password=$PASSWORD'"
+fi
+if [ ! $FILE = "" ]; then
+  FILENAME=`basename $FILE`
+  REQ_PATH="/2013-09-01/files/$FILENAME"
 fi
 if [ ! $LIMIT = "" ]; then
   str="$str&limit=$LIMIT"
@@ -59,16 +90,33 @@ fi
 sigStr=${METHOD^^}"\n"$FQDN"\n"$REQ_PATH"\n"$str
 sig=`echo -e -n ${sigStr} | openssl dgst -sha256 -binary -hmac ${CLIENT_KEY} | base64`
 
+if [ ! $SIGN = "" ]; then
+  echo "Timestamp is $DATE"
+  echo "Signature is $sig"
+  exit
+fi
 cmd="curl -s -S -X ${METHOD^^} -H \"X-NCMB-Application-Key: ${APPLICATION_KEY}\" \\
  -H \"X-NCMB-Timestamp: ${DATE}\" \\
- -H \"X-NCMB-Signature: ${sig}\" \\
- -H \"Content-Type: application/json\""
+ -H \"X-NCMB-Signature: ${sig}\""
 
+if [ ! $FILE = "" ]; then
+  cmd="$cmd -H \"Content-Type: multipart/form-data\""
+  cmd="$cmd -F \"file=@$FILE\""
+else
+  cmd="$cmd -H \"Content-Type: application/json\""
+fi
+
+if [ ! $SESSION = "" ]; then
+  cmd="${cmd} -H \"X-NCMB-Apps-Session-Token: ${SESSION}\" "
+fi
+ 
 if [ ${METHOD^^} = "GET" ]; then
   cmd="${cmd} -G ${QUERY}"
 elif [ ${METHOD^^} = "POST" ]; then
-  DATA="-d '$DATA'"
-  cmd="${cmd} $DATA"
+  if [ $FILE = "" ]; then
+    DATA="-d '$DATA'"
+    cmd="${cmd} $DATA"
+  fi
 elif [ ${METHOD^^} = "PUT" ]; then
   DATA="-d '$DATA'"
   cmd="${cmd} $DATA"
